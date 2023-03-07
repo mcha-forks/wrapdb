@@ -299,16 +299,19 @@ else
   cdata.set('ICONV_CONST', cc.compiles(iconv_const_test) ? 'const' : '')
 endif
 
+rx_dep = declare_dependency()
 regex_dep = disabler()
-pcre_dep = dependency('libpcre', disabler: true, required: get_option('regex'))
+pcre_dep = dependency('libpcreposix', required: get_option('regex'))
 if pcre_dep.found()
-  deps += pcre_dep
+  rx_dep = pcre_dep
+  cdata.set('HAVE_PCREPOSIX_H', 1)
 elif get_option('regex').auto()
   regex_dep = cc.find_library('regex', required: false)
   if cc.has_function('regcomp', dependencies: regex_dep)
-    deps += regex_dep
+    rx_dep = regex_dep
   endif
 endif
+deps += rx_dep
 
 libacl_dep = dependency('libacl', disabler: true, required: get_option('acl'))
 if libacl_dep.found()
@@ -349,7 +352,6 @@ headers = {
   'membership.h': [],
   'memory.h': [],
   'paths.h': [],
-  'pcreposix.h': pcre_dep,
   'poll.h': [],
   'process.h': [],
   'pthread.h': [],
@@ -523,3 +525,19 @@ endif
 incdirs = include_directories('.')
 
 subdir('libarchive')
+
+if get_option('progs').length() > 0
+
+  subdir('libarchive_fe')
+
+  foreach _prog : [
+    'cat',
+    'cpio',
+    'tar',
+  ]
+    if 'all' in get_option('progs') or 'bsd' + _prog in get_option('progs')
+      subdir(_prog)
+    endif
+  endforeach
+
+endif
