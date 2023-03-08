@@ -26,7 +26,7 @@ import platform
 
 from pathlib import Path
 from utils import Version, is_ci, is_debianlike, is_linux, is_macos, is_windows
-
+os.environ['PKG_CONFIG'] = 'pkg-config --debug'
 PERMITTED_FILES = ['generator.sh', 'meson.build', 'meson_options.txt', 'LICENSE.build']
 PER_PROJECT_PERMITTED_FILES = {
     'box2d': [
@@ -345,6 +345,11 @@ class TestReleases(unittest.TestCase):
         if res.returncode == 0:
             if not expect_working:
                 raise Exception(f'Wrap {name} successfully configured but was expected to fail')
+            log_file = Path(builddir, 'meson-logs', 'meson-log.txt')
+            logs = log_file.read_text(encoding='utf-8')
+            print('::group::==== meson-log.txt ====')
+            print(logs)
+            print('::endgroup::')
         else:
             log_file = Path(builddir, 'meson-logs', 'meson-log.txt')
             logs = log_file.read_text(encoding='utf-8')

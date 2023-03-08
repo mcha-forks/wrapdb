@@ -51,6 +51,7 @@ jobs:
       - name: Fetch tags and unshallow
         run: git fetch --unshallow --tags
 
+      - run: brew list
       - run: brew update
       # github actions overwrites brew's python. Force it to reassert itself, by running in a separate step.
       - name: unbreak python in github actions
@@ -63,6 +64,8 @@ jobs:
           brew install ninja
           python3 -m pip install --pre meson
 
+      - run: ls /usr/local/include/pcre*.h
+      - run: ls /usr/include/pcre*.h || true
       - name: Sanity Checks
         run: |
           ./tools/sanity_checks.py
