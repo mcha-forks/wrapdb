@@ -36,12 +36,16 @@ jobs:
 
       - name: Install packages
         run: |
-          python -m pip install --pre meson
+          python -m pip install --pre "git+https://github.com/eli-schwartz/meson@debug-cmake"
 
       - uses: ilammy/msvc-dev-cmd@v1
       - name: Sanity Checks
         run: |
           python tools/sanity_checks.py
+      - uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          path: _build/meson-private/__CMake_compiler_info__/
 
   MacOS:
     runs-on: macos-latest
