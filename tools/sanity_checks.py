@@ -318,6 +318,10 @@ class TestReleases(unittest.TestCase):
         brew_packages = ci.get('brew_packages', [])
         choco_packages = ci.get('choco_packages', [])
         meson_env = os.environ.copy()
+        if is_macos():
+            options.append('-Dbackend=xcode')
+        elif is_windows():
+            options.append('-Dbackend=vs2022')
         if debian_packages and is_debianlike():
             if is_ci():
                 subprocess.check_call(['sudo', 'apt-get', '-y', 'install'] + debian_packages)
