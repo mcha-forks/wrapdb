@@ -1,0 +1,124 @@
+From a95821dd9e00f600558c91dc93010ac912f663d7 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Tim=20R=C3=BChsen?= <tim.ruehsen@gmx.de>
+Date: Sun, 4 Feb 2024 18:38:34 +0100
+Subject: [PATCH] Get rid of Windows WSA startup code
+
+Reported-by: @vszakats (github.com)
+---
+ src/psl.c                                |  7 +++++++
+ tests/test-is-cookie-domain-acceptable.c | 16 ----------------
+ tools/psl.c                              | 21 +--------------------
+ 3 files changed, 8 insertions(+), 36 deletions(-)
+
+diff --git a/src/psl.c b/src/psl.c
+index 0168a68..9fdef85 100644
+--- a/src/psl.c
++++ b/src/psl.c
+@@ -47,6 +47,13 @@
+ #include <sys/types.h>
+ #include <sys/stat.h>
+ 
++#if defined(_WIN32) && (defined(WITH_LIBIDN2) || defined(WITH_LIBIDN))
++# ifndef WIN32_LEAN_AND_MEAN
++# define WIN32_LEAN_AND_MEAN
++# endif
++# include <windows.h> /* for GetACP() */
++#endif
++
+ #if defined(_MSC_VER) && ! defined(ssize_t)
+ # include <basetsd.h>
+ typedef SSIZE_T ssize_t;
+diff --git a/tests/test-is-cookie-domain-acceptable.c b/tests/test-is-cookie-domain-acceptable.c
+index d58bd47..17b46c6 100644
+--- a/tests/test-is-cookie-domain-acceptable.c
++++ b/tests/test-is-cookie-domain-acceptable.c
+@@ -32,10 +32,6 @@
+ # include <config.h>
+ #endif
+ 
+-#ifdef _WIN32
+-# include <winsock2.h> // WSAStartup, WSACleanup
+-#endif
+-
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -113,18 +109,6 @@ static void test_psl(void)
+ 
+ int main(int argc, const char * const *argv)
+ {
+-#ifdef _WIN32
+-	WSADATA wsa_data;
+-	int err;
+-
+-	if ((err = WSAStartup(MAKEWORD(2,2), &wsa_data))) {
+-		printf("WSAStartup failed with error: %d\n", err);
+-		return 1;
+-	}
+-
+-	atexit((void (__cdecl*)(void)) WSACleanup);
+-#endif
+-
+ 	/* if VALGRIND testing is enabled, we have to call ourselves with valgrind checking */
+ 	if (argc == 1) {
+ 		const char *valgrind = getenv("TESTS_VALGRIND");
+diff --git a/tools/psl.c b/tools/psl.c
+index 527d780..5b34013 100644
+--- a/tools/psl.c
++++ b/tools/psl.c
+@@ -37,8 +37,6 @@
+ #endif
+ 
+ #ifdef _WIN32
+-# include <winsock2.h> // WSAStartup, WSACleanup
+-
+ // Windows does not have localtime_r but has localtime_s, which is more or less
+ // the same except that the arguments are reversed
+ # define LOCALTIME_R_SUCCESSFUL(t_sec,t_now)	\
+@@ -52,6 +50,7 @@
+ #include <string.h>
+ #include <ctype.h>
+ #include <locale.h>
++#include <time.h>
+ 
+ #include <libpsl.h>
+ 
+@@ -78,20 +77,6 @@ static void usage(int err, FILE* f)
+ 	exit(err);
+ }
+ 
+-static void init_windows(void) {
+-#ifdef _WIN32
+-	WSADATA wsa_data;
+-	int err;
+-
+-	if ((err = WSAStartup(MAKEWORD(2,2), &wsa_data))) {
+-		printf("WSAStartup failed with error: %d\n", err);
+-		exit(EXIT_FAILURE);
+-	}
+-
+-	atexit((void (__cdecl*)(void)) WSACleanup);
+-#endif
+-}
+-
+ /* RFC 2822-compliant date format */
+ static const char *time2str(time_t t)
+ {
+@@ -238,8 +223,6 @@ int main(int argc, const char *const *argv)
+ 				else if (mode == 4) {
+ 					char *cookie_domain_lower;
+ 
+-					init_windows();
+-
+ 					if ((rc = psl_str_to_utf8lower(domain, NULL, NULL, &cookie_domain_lower)) == PSL_SUCCESS) {
+ 						if (!batch_mode)
+ 							printf("%s: ", domain);
+@@ -284,8 +267,6 @@ int main(int argc, const char *const *argv)
+ 		}
+ 	}
+ 	else if (mode == 4) {
+-		init_windows();
+-
+ 		for (; arg < argv + argc; arg++) {
+ 			if (!batch_mode)
+ 				printf("%s: ", *arg);

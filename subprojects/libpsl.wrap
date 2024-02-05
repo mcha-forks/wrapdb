@@ -5,7 +5,7 @@ source_filename = libpsl-0.21.5.tar.gz
 source_hash = 1dcc9ceae8b128f3c0b3f654decd0e1e891afc6ff81098f227ef260449dae208
 # libpsl-0.21.2 doesn't compile on Windows, but this is fixed on later versions.
 patch_directory = libpsl
-diff_files = libpsl-winipv4.patch
+diff_files = libpsl-winipv4.patch, libpsl-winipv4-remove-wsa.patch
 
 [provide]
 libpsl = libpsl_dep
