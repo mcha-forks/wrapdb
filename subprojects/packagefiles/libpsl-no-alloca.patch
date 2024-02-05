@@ -1,0 +1,509 @@
+From b88a91d3b69b4403c4eb7ccd61e6a614257dbcf2 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Tim=20R=C3=BChsen?= <tim.ruehsen@gmx.de>
+Date: Sun, 4 Feb 2024 17:07:11 +0100
+Subject: [PATCH 1/3] Drop usage of alloca() in tests
+
+Reported-by: @rsbeckerca (github.com)
+---
+ tests/Makefile.am                        |  7 ++++
+ tests/common.c                           | 48 ++++++++++++++++++++++++
+ tests/common.h                           | 38 +++++++++++++++++++
+ tests/meson.build                        |  4 +-
+ tests/test-is-cookie-domain-acceptable.c | 10 +----
+ tests/test-is-public-all.c               | 14 +++----
+ tests/test-is-public-builtin.c           | 12 +-----
+ tests/test-is-public.c                   | 12 +-----
+ tests/test-registrable-domain.c          | 12 +-----
+ 9 files changed, 108 insertions(+), 49 deletions(-)
+ create mode 100644 tests/common.c
+ create mode 100644 tests/common.h
+
+diff --git a/tests/Makefile.am b/tests/Makefile.am
+index 5b096ce..5fc497d 100644
+--- a/tests/Makefile.am
++++ b/tests/Makefile.am
+@@ -15,6 +15,8 @@ PSL_TESTS = test-is-public test-is-public-all test-is-cookie-domain-acceptable
+ 
+ if ENABLE_BUILTIN
+   PSL_TESTS += test-is-public-builtin test-registrable-domain
++  test_is_public_builtin_SOURCES = test-is-public-builtin.c $(common_SOURCES)
++  test_registrable_domain_SOURCES = test-registrable-domain.c $(common_SOURCES)
+ endif
+ 
+ check_PROGRAMS = $(PSL_TESTS)
+@@ -22,6 +24,11 @@ check_PROGRAMS = $(PSL_TESTS)
+ TESTS_ENVIRONMENT = TESTS_VALGRIND="@VALGRIND_ENVIRONMENT@"
+ TESTS = $(PSL_TESTS)
+ 
++common_SOURCES = common.c common.h
++test_is_public_SOURCES = test-is-public.c $(common_SOURCES)
++test_is_public_all_SOURCES = test-is-public-all.c $(common_SOURCES)
++test_is_cookie_domain_acceptable_SOURCES = test-is-cookie-domain-acceptable.c $(common_SOURCES)
++
+ # dafsa.psl and dafsa_ascii.psl must be created before any test is executed
+ # check-local target works in parallel to the tests, so the test suite will likely fail
+ BUILT_SOURCES = psl.dafsa psl_ascii.dafsa
+diff --git a/tests/common.c b/tests/common.c
+new file mode 100644
+index 0000000..d9fe923
+--- /dev/null
++++ b/tests/common.c
+@@ -0,0 +1,48 @@
++/*
++ * Copyright(c) 2014-2024 Tim Ruehsen
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be included in
++ * all copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++ * DEALINGS IN THE SOFTWARE.
++ *
++ * This file is part of the test suite of libpsl.
++ */
++
++#include <stdio.h> // snprintf
++#include <stdlib.h> // exit, system
++#include <string.h> // strlen
++#if defined _WIN32
++#	include <malloc.h>
++#endif
++
++int run_valgrind(const char *valgrind, const char *executable)
++{
++	char cmd[BUFSIZ];
++	int n, rc;
++
++	n = snprintf(cmd, sizeof(cmd), "TESTS_VALGRIND="" %s %s", valgrind, executable);
++	if ((unsigned)n >= sizeof(cmd)) {
++		printf("Valgrind command line is too long (>= %u)\n", (unsigned) sizeof(cmd));
++		return EXIT_FAILURE;
++	}
++
++	if ((rc = system(cmd))) {
++		printf("Failed to execute with '%s' (system() returned %d)\n", valgrind, rc);
++	}
++
++	return rc ? EXIT_FAILURE : EXIT_SUCCESS;
++}
+diff --git a/tests/common.h b/tests/common.h
+new file mode 100644
+index 0000000..fa76fee
+--- /dev/null
++++ b/tests/common.h
+@@ -0,0 +1,38 @@
++/*
++ * Copyright(c) 2014-2024 Tim Ruehsen
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be included in
++ * all copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++ * DEALINGS IN THE SOFTWARE.
++ *
++ * This file is part of the test suite of libpsl.
++ */
++
++#ifndef COMMON_H
++#define COMMON_H
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++int run_valgrind(const char *valgrind, const char *executable);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* COMMON_H */
+diff --git a/tests/meson.build b/tests/meson.build
+index d8c266d..1ab2d33 100644
+--- a/tests/meson.build
++++ b/tests/meson.build
+@@ -31,8 +31,8 @@ if enable_builtin
+ endif
+ 
+ foreach test_name : tests
+-  source = test_name + '.c'
+-  exe = executable(test_name, source,
++  sources = [test_name + '.c', 'common.c', 'common.h']
++  exe = executable(test_name, sources,
+     build_by_default: false,
+     c_args : tests_cargs,
+     link_with : libpsl,
+diff --git a/tests/test-is-cookie-domain-acceptable.c b/tests/test-is-cookie-domain-acceptable.c
+index d58bd47..f7f833d 100644
+--- a/tests/test-is-cookie-domain-acceptable.c
++++ b/tests/test-is-cookie-domain-acceptable.c
+@@ -39,11 +39,9 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+-#ifdef HAVE_ALLOCA_H
+-#	include <alloca.h>
+-#endif
+ 
+ #include <libpsl.h>
++#include "common.h"
+ 
+ #define countof(a) (sizeof(a)/sizeof(*(a)))
+ 
+@@ -130,11 +128,7 @@ int main(int argc, const char * const *argv)
+ 		const char *valgrind = getenv("TESTS_VALGRIND");
+ 
+ 		if (valgrind && *valgrind) {
+-			size_t cmdsize = strlen(valgrind) + strlen(argv[0]) + 32;
+-			char *cmd = alloca(cmdsize);
+-
+-			snprintf(cmd, cmdsize, "TESTS_VALGRIND="" %s %s", valgrind, argv[0]);
+-			return system(cmd) != 0;
++			return run_valgrind(valgrind, argv[0]);
+ 		}
+ 	}
+ 
+diff --git a/tests/test-is-public-all.c b/tests/test-is-public-all.c
+index 080ea50..28903db 100644
+--- a/tests/test-is-public-all.c
++++ b/tests/test-is-public-all.c
+@@ -36,13 +36,12 @@
+ #include <stdlib.h>
+ #include <string.h>
+ #include <ctype.h>
+-#ifdef HAVE_ALLOCA_H
+-#	include <alloca.h>
+-#elif defined _WIN32
++#if defined _WIN32
+ #	include <malloc.h>
+ #endif
+ 
+ #include <libpsl.h>
++#include "common.h"
+ 
+ static int
+ 	ok,
+@@ -120,7 +119,7 @@ static void test_psl_entry(const psl_ctx_t *psl, const char *domain, int type)
+ 	} else if (*domain == '*') { /* a wildcard, e.g. *.ck or *.platform.sh */
+ 		/* '*.platform.sh' -> 'y.x.platform.sh' */
+ 		size_t len = strlen(domain);
+-		char *xdomain = alloca(len + 3);
++		char *xdomain = malloc(len + 3);
+ 
+ 		memcpy(xdomain, "y.x", 3);
+ 		memcpy(xdomain + 3, domain + 1, len);
+@@ -129,6 +128,7 @@ static void test_psl_entry(const psl_ctx_t *psl, const char *domain, int type)
+ 		test_type_any(psl, xdomain + 2, type, 1); /* random wildcard-matching domain is a PS... */
+ 		test_type_any(psl, xdomain, type, 0); /* ... but sub domain is not */
+ 
++		free(xdomain);
+ 	} else {
+ 		test_type_any(psl, domain, type, 1); /* Any normal PSL entry */
+ 	}
+@@ -230,11 +230,7 @@ int main(int argc, const char * const *argv)
+ 		const char *valgrind = getenv("TESTS_VALGRIND");
+ 
+ 		if (valgrind && *valgrind) {
+-			size_t cmdsize = strlen(valgrind) + strlen(argv[0]) + 32;
+-			char *cmd = alloca(cmdsize);
+-
+-			snprintf(cmd, cmdsize, "TESTS_VALGRIND="" %s %s", valgrind, argv[0]);
+-			return system(cmd) != 0;
++			return run_valgrind(valgrind, argv[0]);
+ 		}
+ 	}
+ 
+diff --git a/tests/test-is-public-builtin.c b/tests/test-is-public-builtin.c
+index ddebca9..dde7e71 100644
+--- a/tests/test-is-public-builtin.c
++++ b/tests/test-is-public-builtin.c
+@@ -35,13 +35,9 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+-#ifdef HAVE_ALLOCA_H
+-#	include <alloca.h>
+-#elif defined _WIN32
+-#	include <malloc.h>
+-#endif
+ 
+ #include <libpsl.h>
++#include "common.h"
+ 
+ #define countof(a) (sizeof(a)/sizeof(*(a)))
+ 
+@@ -141,11 +137,7 @@ int main(int argc, const char * const *argv)
+ 		const char *valgrind = getenv("TESTS_VALGRIND");
+ 
+ 		if (valgrind && *valgrind) {
+-			size_t cmdsize = strlen(valgrind) + strlen(argv[0]) + 32;
+-			char *cmd = alloca(cmdsize);
+-
+-			snprintf(cmd, cmdsize, "TESTS_VALGRIND="" %s %s", valgrind, argv[0]);
+-			return system(cmd) != 0;
++			return run_valgrind(valgrind, argv[0]);
+ 		}
+ 	}
+ 
+diff --git a/tests/test-is-public.c b/tests/test-is-public.c
+index b8703d5..2757a44 100644
+--- a/tests/test-is-public.c
++++ b/tests/test-is-public.c
+@@ -35,13 +35,9 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+-#ifdef HAVE_ALLOCA_H
+-#	include <alloca.h>
+-#elif defined _WIN32
+-#	include <malloc.h>
+-#endif
+ 
+ #include <libpsl.h>
++#include "common.h"
+ 
+ #define countof(a) (sizeof(a)/sizeof(*(a)))
+ 
+@@ -195,11 +191,7 @@ int main(int argc, const char * const *argv)
+ 		const char *valgrind = getenv("TESTS_VALGRIND");
+ 
+ 		if (valgrind && *valgrind) {
+-			size_t cmdsize = strlen(valgrind) + strlen(argv[0]) + 32;
+-			char *cmd = alloca(cmdsize);
+-
+-			snprintf(cmd, cmdsize, "TESTS_VALGRIND="" %s %s", valgrind, argv[0]);
+-			return system(cmd) != 0;
++			return run_valgrind(valgrind, argv[0]);
+ 		}
+ 	}
+ 
+diff --git a/tests/test-registrable-domain.c b/tests/test-registrable-domain.c
+index 0ed8d7f..afd2ce4 100644
+--- a/tests/test-registrable-domain.c
++++ b/tests/test-registrable-domain.c
+@@ -35,13 +35,9 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+-#ifdef HAVE_ALLOCA_H
+-#	include <alloca.h>
+-#elif defined _WIN32
+-#	include <malloc.h>
+-#endif
+ 
+ #include <libpsl.h>
++#include "common.h"
+ 
+ static int
+ 	ok,
+@@ -199,11 +195,7 @@ int main(int argc, const char * const *argv)
+ 		const char *valgrind = getenv("TESTS_VALGRIND");
+ 
+ 		if (valgrind && *valgrind) {
+-			size_t cmdsize = strlen(valgrind) + strlen(argv[0]) + 32;
+-			char *cmd = alloca(cmdsize);
+-
+-			snprintf(cmd, cmdsize, "TESTS_VALGRIND="" %s %s", valgrind, argv[0]);
+-			return system(cmd) != 0;
++			return run_valgrind(valgrind, argv[0]);
+ 		}
+ 	}
+ 
+
+From 6cde0feb9644fbd798eb6c0ce2a2540ca4a76647 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Tim=20R=C3=BChsen?= <tim.ruehsen@gmx.de>
+Date: Sun, 4 Feb 2024 18:01:20 +0100
+Subject: [PATCH 2/3] Drop usage of alloca() in libpsl
+
+Reported-by: @rsbeckerca (github.com)
+---
+ configure.ac |  2 --
+ src/psl.c    | 48 +++++++++++++++++++++++++++---------------------
+ 2 files changed, 27 insertions(+), 23 deletions(-)
+
+diff --git a/configure.ac b/configure.ac
+index bb8b345..b8513d6 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -356,8 +356,6 @@ AC_ARG_WITH(psl-testfile,
+   PSL_TESTFILE="\$(top_srcdir)/list/tests/tests.txt")
+ AC_SUBST(PSL_TESTFILE)
+ 
+-# check for alloca / alloca.h
+-AC_FUNC_ALLOCA
+ AC_CHECK_FUNCS([strndup clock_gettime fmemopen nl_langinfo])
+ 
+ # check for dirent.h
+diff --git a/src/psl.c b/src/psl.c
+index 4c5c95e..379bf17 100644
+--- a/src/psl.c
++++ b/src/psl.c
+@@ -78,12 +78,8 @@ typedef SSIZE_T ssize_t;
+ 
+ #ifndef _WIN32
+ # include <arpa/inet.h>
+-#endif
+-
+-#ifdef HAVE_ALLOCA_H
+-#	include <alloca.h>
+-#elif defined _WIN32
+-#	include <malloc.h>
++#else
++# include <malloc.h>
+ #endif
+ 
+ #ifdef WITH_LIBICU
+@@ -1745,23 +1741,31 @@ psl_error_t psl_str_to_utf8lower(const char *str, const char *encoding PSL_UNUSE
+ 	}
+ 
+ #ifdef WITH_LIBICU
++#define STACK_STRLENGTH 256
+ 	do {
+-	size_t str_length = strlen(str);
+ 	UErrorCode status = 0;
+ 	UChar *utf16_dst, *utf16_lower;
+-	int32_t utf16_dst_length;
+ 	char *utf8_lower;
++	int32_t utf16_dst_length, utf16_dst_size, utf16_lower_size, utf8_lower_size;
+ 	UConverter *uconv;
++	UChar utf16_dst_buf[STACK_STRLENGTH * 2 + 1];
++	UChar utf16_lower_buf[STACK_STRLENGTH * 2 + 1];
++	char utf8_lower_buf[STACK_STRLENGTH * 6 + 1];
++	size_t str_length = strlen(str);
+ 
+-	if (str_length < 256) {
+-		/* C89 allocation */
+-		utf16_dst   = alloca(sizeof(UChar) * (str_length * 2 + 1));
+-		utf16_lower = alloca(sizeof(UChar) * (str_length * 2 + 1));
+-		utf8_lower  = alloca(str_length * 6 + 1);
++	if (str_length <= STACK_STRLENGTH) {
++		utf16_dst_size = countof(utf16_dst_buf);
++		utf16_lower_size = countof(utf16_lower_buf);
++		utf8_lower_size = countof(utf8_lower_buf);
++		utf16_dst   = utf16_dst_buf;
++		utf16_lower = utf16_lower_buf;
++		utf8_lower  = utf8_lower_buf;
+ 	} else {
+-		utf16_dst   = malloc(sizeof(UChar) * (str_length * 2 + 1));
+-		utf16_lower = malloc(sizeof(UChar) * (str_length * 2 + 1));
+-		utf8_lower  = malloc(str_length * 6 + 1);
++		utf16_dst_size = utf16_lower_size = str_length * 2 + 1;
++		utf8_lower_size = str_length * 6 + 1;
++		utf16_dst   = malloc(sizeof(UChar) * utf16_dst_size);
++		utf16_lower = malloc(sizeof(UChar) * utf16_lower_size);
++		utf8_lower  = malloc(sizeof(char) * utf8_lower_size);
+ 
+ 		if (!utf16_dst || !utf16_lower || !utf8_lower) {
+ 			ret = PSL_ERR_NO_MEM;
+@@ -1771,13 +1775,13 @@ psl_error_t psl_str_to_utf8lower(const char *str, const char *encoding PSL_UNUSE
+ 
+ 	uconv = ucnv_open(encoding, &status);
+ 	if (U_SUCCESS(status)) {
+-		utf16_dst_length = ucnv_toUChars(uconv, utf16_dst, str_length * 2 + 1, str, str_length, &status);
++		utf16_dst_length = ucnv_toUChars(uconv, utf16_dst, utf16_dst_size, str, str_length, &status);
+ 		ucnv_close(uconv);
+ 
+ 		if (U_SUCCESS(status)) {
+-			int32_t utf16_lower_length = u_strToLower(utf16_lower, str_length * 2 + 1, utf16_dst, utf16_dst_length, locale, &status);
++			int32_t utf16_lower_length = u_strToLower(utf16_lower, utf16_lower_size, utf16_dst, utf16_dst_length, locale, &status);
+ 			if (U_SUCCESS(status)) {
+-				u_strToUTF8(utf8_lower, str_length * 6 + 1, NULL, utf16_lower, utf16_lower_length, &status);
++				u_strToUTF8(utf8_lower, utf8_lower_size, NULL, utf16_lower, utf16_lower_length, &status);
+ 				if (U_SUCCESS(status)) {
+ 					ret = PSL_SUCCESS;
+ 					if (lower) {
+@@ -1805,11 +1809,13 @@ psl_error_t psl_str_to_utf8lower(const char *str, const char *encoding PSL_UNUSE
+ 		/* fprintf(stderr, "Failed to open converter for '%s' (status %d)\n", encoding, status); */
+ 	}
+ out:
+-	if (str_length >= 256) {
++	if (utf16_dst != utf16_dst_buf)
+ 		free(utf16_dst);
++	if (utf16_lower != utf16_lower_buf)
+ 		free(utf16_lower);
++	if (utf8_lower != utf8_lower_buf)
+ 		free(utf8_lower);
+-	}
++
+ 	} while (0);
+ #elif defined(WITH_LIBIDN2) || defined(WITH_LIBIDN)
+ 	do {
+
+From 272cd35567246c783730f05a76a853f227cff9f3 Mon Sep 17 00:00:00 2001
+From: Eli Schwartz <eschwartz93@gmail.com>
+Date: Sun, 4 Feb 2024 22:48:17 -0500
+Subject: [PATCH 3/3] meson.build: adapt to alloca removal
+
+---
+ meson.build       | 5 -----
+ tests/meson.build | 5 ++++-
+ 2 files changed, 4 insertions(+), 6 deletions(-)
+
+diff --git a/meson.build b/meson.build
+index 27808d3..a072988 100644
+--- a/meson.build
++++ b/meson.build
+@@ -93,9 +93,7 @@ config.set('WITH_LIBIDN', enable_runtime == 'libidn')
+ config.set('ENABLE_BUILTIN', enable_builtin)
+ config.set('HAVE_UNISTD_H', cc.check_header('unistd.h'))
+ config.set('HAVE_STDINT_H', cc.check_header('stdint.h'))
+-config.set('HAVE_ALLOCA_H', cc.check_header('alloca.h'))
+ config.set('HAVE_DIRENT_H', cc.check_header('dirent.h'))
+-config.set('HAVE_ALLOCA', cc.has_function('alloca'))
+ config.set('HAVE_STRNDUP', cc.has_function('strndup'))
+ config.set('HAVE_CLOCK_GETTIME', cc.has_function('clock_gettime'))
+ config.set('HAVE_FMEMOPEN', cc.has_function('fmemopen'))
+@@ -127,9 +125,6 @@ if cc.get_id() == 'msvc'
+       add_project_arguments('-Dsnprintf=_snprintf', language: 'c')
+     endif
+   endif
+-  if cc.has_header_symbol('malloc.h', '_alloca')
+-    add_project_arguments('-Dalloca=_alloca', language: 'c')
+-  endif
+ endif
+ 
+ subdir('include')
+diff --git a/tests/meson.build b/tests/meson.build
+index 1ab2d33..84955a2 100644
+--- a/tests/meson.build
++++ b/tests/meson.build
+@@ -30,12 +30,15 @@ if enable_builtin
+   tests += ['test-is-public-builtin', 'test-registrable-domain']
+ endif
+ 
++libtestcommon = static_library('testcommon', 'common.c',
++  build_by_default: false)
++
+ foreach test_name : tests
+   sources = [test_name + '.c', 'common.c', 'common.h']
+   exe = executable(test_name, sources,
+     build_by_default: false,
+     c_args : tests_cargs,
+-    link_with : libpsl,
++    link_with : [libpsl, libtestcommon],
+     include_directories : configinc,
+     link_language : link_language,
+     dependencies : [libpsl_dep, networking_deps])
