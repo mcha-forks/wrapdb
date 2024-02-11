@@ -1,0 +1,28 @@
+From b038ece6627816ddffdd2eca8c666bc0024ebd12 Mon Sep 17 00:00:00 2001
+From: Eli Schwartz <eschwartz93@gmail.com>
+Date: Sun, 11 Feb 2024 12:42:09 -0500
+Subject: [PATCH] Adapt meson.build to removal of winsock
+
+Signed-off-by: Eli Schwartz <eschwartz93@gmail.com>
+---
+ meson.build | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/meson.build b/meson.build
+index 27808d3..574c772 100644
+--- a/meson.build
++++ b/meson.build
+@@ -77,10 +77,6 @@ if libidn2_dep.found() or libidn_dep.found()
+   libiconv_dep = dependency('iconv')
+ endif
+ 
+-if host_machine.system() == 'windows'
+-  networking_deps = cc.find_library('ws2_32')
+-endif
+-
+ if enable_runtime == 'auto'
+   enable_runtime = 'no'
+ endif
+-- 
+2.43.0
+
